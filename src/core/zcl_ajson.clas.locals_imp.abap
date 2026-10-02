@@ -567,7 +567,7 @@ class lcl_json_serializer definition final create private.
       end of ty_control_char.
 
     class-data gv_comma_with_lf type string.
-    " U+0000 - U+001F other than tab, LF and CR: JSON allows them only escaped
+    " U+0000 - U+001F other than LF: JSON allows them only escaped
     class-data gt_control_chars type standard table of ty_control_char with default key.
     class-data gv_control_chars type string.
     class-data gv_specials type string.
@@ -617,16 +617,20 @@ class lcl_json_serializer implementation.
 
     do 32 times.
       lv_code = sy-index - 1.
-      if lv_code = '09' or lv_code = '0A' or lv_code = '0D'.
-        continue. " \t, \n and \r are escaped on their own
+      if lv_code = '0A'.
+        continue. " \n is common, it is escaped on its own
       endif.
       lv_xstr = lv_code.
       ls_control_char-char = lcl_utils=>xstring_to_string_utf8( lv_xstr ).
       case lv_code.
         when '08'.
           ls_control_char-escaped = '\b'.
+        when '09'.
+          ls_control_char-escaped = '\t'.
         when '0C'.
           ls_control_char-escaped = '\f'.
+        when '0D'.
+          ls_control_char-escaped = '\r'.
         when others.
           ls_control_char-escaped = to_lower( |\\u00{ lv_code }| ).
       endcase.
@@ -634,7 +638,7 @@ class lcl_json_serializer implementation.
       gv_control_chars = gv_control_chars && ls_control_char-char.
     enddo.
 
-    gv_specials = |"\\\t\n\r{ gv_control_chars }|.
+    gv_specials = |"\\\n{ gv_control_chars }|.
 
   endmethod.
 
@@ -792,16 +796,6 @@ class lcl_json_serializer implementation.
         val = rv_escaped
         sub = |\n|
         with = '\n'
-        occ = 0 ).
-      rv_escaped = replace(
-        val = rv_escaped
-        sub = |\r|
-        with = '\r'
-        occ = 0 ).
-      rv_escaped = replace(
-        val = rv_escaped
-        sub = |\t|
-        with = '\t'
         occ = 0 ).
       rv_escaped = replace(
         val = rv_escaped
