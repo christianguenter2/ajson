@@ -570,7 +570,6 @@ class lcl_json_serializer definition final create private.
     " U+0000 - U+001F other than LF: JSON allows them only escaped
     class-data gt_control_chars type standard table of ty_control_char with default key.
     class-data gv_control_chars type string.
-    class-data gv_specials type string.
 
     data mt_json_tree type zif_ajson_types=>ty_nodes_ts.
     data mv_keep_item_order type abap_bool.
@@ -637,8 +636,6 @@ class lcl_json_serializer implementation.
       append ls_control_char to gt_control_chars.
       gv_control_chars = gv_control_chars && ls_control_char-char.
     enddo.
-
-    gv_specials = |"\\\n{ gv_control_chars }|.
 
   endmethod.
 
@@ -783,10 +780,9 @@ class lcl_json_serializer implementation.
 
     data ls_control_char like line of gt_control_chars.
 
+    " see also https://www.json.org/json-en.html
     rv_escaped = iv_unescaped.
-    if rv_escaped ca gv_specials.
-      " TODO consider performance ...
-      " see also https://www.json.org/json-en.html
+    if rv_escaped ca |"\\\n|.
       rv_escaped = replace(
         val = rv_escaped
         sub = '\'
@@ -802,17 +798,17 @@ class lcl_json_serializer implementation.
         sub = '"'
         with = '\"'
         occ = 0 ).
+    endif.
 
-      if rv_escaped ca gv_control_chars.
-        loop at gt_control_chars into ls_control_char.
-          rv_escaped = replace(
-            val = rv_escaped
-            sub = ls_control_char-char
-            with = ls_control_char-escaped
-            occ = 0 ).
-        endloop.
-      endif.
-
+    " only after the backslash replace: these escapes bring their own backslash
+    if rv_escaped ca gv_control_chars.
+      loop at gt_control_chars into ls_control_char.
+        rv_escaped = replace(
+          val = rv_escaped
+          sub = ls_control_char-char
+          with = ls_control_char-escaped
+          occ = 0 ).
+      endloop.
     endif.
 
   endmethod.
