@@ -560,7 +560,17 @@ class lcl_json_serializer definition final create private.
 
   private section.
 
+    types:
+      begin of ty_control_char,
+        char type string,
+        escaped type string,
+      end of ty_control_char.
+
     class-data gv_comma_with_lf type string.
+    " U+0000 - U+001F other than tab, LF and CR: JSON allows them only escaped
+    class-data gt_control_chars type standard table of ty_control_char with default key.
+    class-data gv_control_chars type string.
+    class-data gv_specials type string.
 
     data mt_json_tree type zif_ajson_types=>ty_nodes_ts.
     data mv_keep_item_order type abap_bool.
@@ -598,7 +608,34 @@ endclass.
 class lcl_json_serializer implementation.
 
   method class_constructor.
+
+    data lv_code type x length 1.
+    data lv_xstr type xstring.
+    data ls_control_char like line of gt_control_chars.
+
     gv_comma_with_lf = ',' && cl_abap_char_utilities=>newline.
+
+    do 32 times.
+      lv_code = sy-index - 1.
+      if lv_code = '09' or lv_code = '0A' or lv_code = '0D'.
+        continue. " \t, \n and \r are escaped on their own
+      endif.
+      lv_xstr = lv_code.
+      ls_control_char-char = lcl_utils=>xstring_to_string_utf8( lv_xstr ).
+      case lv_code.
+        when '08'.
+          ls_control_char-escaped = '\b'.
+        when '0C'.
+          ls_control_char-escaped = '\f'.
+        when others.
+          ls_control_char-escaped = to_lower( |\\u00{ lv_code }| ).
+      endcase.
+      append ls_control_char to gt_control_chars.
+      gv_control_chars = gv_control_chars && ls_control_char-char.
+    enddo.
+
+    gv_specials = |"\\\t\n\r{ gv_control_chars }|.
+
   endmethod.
 
   method stringify.
@@ -740,8 +777,10 @@ class lcl_json_serializer implementation.
 
   method escape_string.
 
+    data ls_control_char like line of gt_control_chars.
+
     rv_escaped = iv_unescaped.
-    if rv_escaped ca |"\\\t\n\r|.
+    if rv_escaped ca gv_specials.
       " TODO consider performance ...
       " see also https://www.json.org/json-en.html
       rv_escaped = replace(
@@ -769,6 +808,16 @@ class lcl_json_serializer implementation.
         sub = '"'
         with = '\"'
         occ = 0 ).
+
+      if rv_escaped ca gv_control_chars.
+        loop at gt_control_chars into ls_control_char.
+          rv_escaped = replace(
+            val = rv_escaped
+            sub = ls_control_char-char
+            with = ls_control_char-escaped
+            occ = 0 ).
+        endloop.
+      endif.
 
     endif.
 
